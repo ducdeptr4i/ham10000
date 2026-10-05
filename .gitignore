@@ -1,0 +1,18 @@
+# Python and local environments
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Source image collection is several gigabytes; keep it off GitHub.
+data/images/
+
+# Cached extracted embeddings can be regenerated and are not needed at runtime.
+outputs/hybrid_features/
+
+# Local editor and OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

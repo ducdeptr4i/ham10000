@@ -1,0 +1,6 @@
+Model,Accuracy,Precision Macro,Recall Macro,Macro-F1,Balanced Accuracy
+ResNet50,81.36,72.37,65.37,66.8,65.37
+ViT-B/16,79.63,68.07,66.31,64.89,66.31
+CNN + ViT,83.89,73.56,67.7,69.9,67.7
+CNN + ViT + Weighted CE,83.36,72.71,70.97,71.59,70.97
+CNN + ViT + Focal Loss,83.69,74.13,69.39,71.28,69.39
