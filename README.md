@@ -5,8 +5,9 @@ A Streamlit research demo that classifies dermoscopy images into the seven HAM10
 ## Features
 
 - Checks image dimensions and flags likely dark or blank borders before analysis. It never crops the uploaded image automatically.
+- Shows separate ResNet50, ViT-B/16, and Hybrid rankings for the same image so their top predictions can be compared.
 - Shows the two highest-ranked classes. The second result is an alternative class ranking, not proof of a second coexisting disease.
-- Displays a Grad-CAM overlay from the ResNet50 branch to illustrate image regions that influence the top-class score. It is not a lesion segmentation mask.
+- Displays Grad-CAM for ResNet50 and for the Hybrid score through its ResNet50 branch. These maps illustrate image influence; they are not lesion segmentation masks. The demo does not produce a separate ViT attention map.
 - Shows the model's raw softmax scores. They are not calibrated clinical probabilities.
 
 ## Run locally

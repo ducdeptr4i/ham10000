@@ -67,19 +67,21 @@ def load_models():
     cnn = resnet50(weights=None)
     cnn.fc = nn.Linear(cnn.fc.in_features, len(CLASS_NAMES))
     cnn.load_state_dict(torch.load(CNN_PATH, map_location=device))
+    cnn_classifier = cnn.fc.to(device).eval()
     cnn.fc = nn.Identity()
     cnn = cnn.to(device).eval()
 
     vit = vit_b_16(weights=None)
     vit.heads.head = nn.Linear(vit.heads.head.in_features, len(CLASS_NAMES))
     vit.load_state_dict(torch.load(VIT_PATH, map_location=device))
+    vit_classifier = vit.heads.to(device).eval()
     vit.heads = nn.Identity()
     vit = vit.to(device).eval()
 
     hybrid = HybridClassifier()
     hybrid.load_state_dict(torch.load(HYBRID_PATH, map_location=device))
     hybrid = hybrid.to(device).eval()
-    return cnn, vit, hybrid, device
+    return cnn, vit, hybrid, device, cnn_classifier, vit_classifier
 
 
 def inspect_image(image):
@@ -142,8 +144,34 @@ def _make_overlay(image, heatmap):
     return Image.fromarray(np.uint8(np.clip(blended, 0, 255)))
 
 
-def predict_image(image, cnn, vit, hybrid, device):
-    """Predict the top ranked classes and make a CNN-branch Grad-CAM overlay."""
+def _rank_logits(logits, top_k=2):
+    probabilities = torch.softmax(logits, dim=1)[0]
+    values, indices = torch.topk(probabilities, k=top_k)
+    ranked = []
+    for score, index in zip(values.detach().cpu().tolist(), indices.detach().cpu().tolist()):
+        code = CLASS_NAMES[index]
+        ranked.append({
+            "class_code": code,
+            "class_name": CLASS_FULL_NAMES[code],
+            "score": float(score),
+        })
+    return probabilities, ranked
+
+
+def _make_gradcam(activation, gradients, image):
+    heatmap = torch.relu(
+        (gradients.mean(dim=(2, 3), keepdim=True) * activation).sum(dim=1)
+    )
+    heatmap = F.interpolate(
+        heatmap.unsqueeze(1), size=(224, 224), mode="bilinear", align_corners=False
+    )[0, 0].detach().cpu().numpy()
+    if heatmap.max() > 0:
+        heatmap /= heatmap.max()
+    return _make_overlay(image, heatmap)
+
+
+def predict_image(image, cnn, vit, hybrid, device, cnn_classifier, vit_classifier):
+    """Compare standalone and hybrid rankings and create CNN-branch Grad-CAM maps."""
     image = image.convert("RGB")
     input_tensor = transform(image).unsqueeze(0).to(device)
     captured = {}
@@ -156,47 +184,52 @@ def predict_image(image, cnn, vit, hybrid, device):
         # Gradients are needed only for the visualization. Model weights stay fixed.
         with torch.enable_grad():
             cnn_feature = cnn(input_tensor)
+            cnn_logits = cnn_classifier(cnn_feature)
+            cnn_probabilities, cnn_ranked = _rank_logits(cnn_logits)
             with torch.no_grad():
                 vit_feature = vit(input_tensor)
+                vit_logits = vit_classifier(vit_feature)
+                vit_probabilities, vit_ranked = _rank_logits(vit_logits)
             logits = hybrid(torch.cat((cnn_feature, vit_feature), dim=1))
-            probabilities = torch.softmax(logits, dim=1)
-            predicted_index = int(probabilities.argmax(dim=1).item())
+            probabilities, hybrid_ranked = _rank_logits(logits)
             activation = captured.get("activation")
             if activation is None:
                 raise RuntimeError("Không lấy được đặc trưng ResNet50 để tạo Grad-CAM.")
-            gradients = torch.autograd.grad(
-                logits[0, predicted_index], activation, retain_graph=False
+            cnn_gradients = torch.autograd.grad(
+                cnn_logits[0, int(cnn_probabilities.argmax().item())],
+                activation,
+                retain_graph=True,
+            )[0]
+            hybrid_gradients = torch.autograd.grad(
+                logits[0, int(probabilities.argmax().item())], activation
             )[0]
     finally:
         hook.remove()
 
-    heatmap = torch.relu(
-        (gradients.mean(dim=(2, 3), keepdim=True) * activation).sum(dim=1)
-    )
-    heatmap = F.interpolate(
-        heatmap.unsqueeze(1), size=(224, 224), mode="bilinear", align_corners=False
-    )[0, 0].detach().cpu().numpy()
-    if heatmap.max() > 0:
-        heatmap /= heatmap.max()
-
-    values, indices = torch.topk(probabilities[0].detach(), k=2)
-    ranked_classes = []
-    for score, index in zip(values.cpu().tolist(), indices.cpu().tolist()):
-        code = CLASS_NAMES[index]
-        ranked_classes.append({
-            "class_code": code,
-            "class_name": CLASS_FULL_NAMES[code],
-            "score": float(score),
-        })
+    all_model_probabilities = {
+        "ResNet50": cnn_probabilities,
+        "ViT-B/16": vit_probabilities,
+        "Hybrid": probabilities,
+    }
+    all_model_rankings = {
+        "ResNet50": cnn_ranked,
+        "ViT-B/16": vit_ranked,
+        "Hybrid": hybrid_ranked,
+    }
 
     return {
-        "class_code": ranked_classes[0]["class_code"],
-        "class_name": ranked_classes[0]["class_name"],
-        "score": ranked_classes[0]["score"],
-        "ranked_classes": ranked_classes,
+        "class_code": hybrid_ranked[0]["class_code"],
+        "class_name": hybrid_ranked[0]["class_name"],
+        "score": hybrid_ranked[0]["score"],
+        "ranked_classes": hybrid_ranked,
+        "model_rankings": all_model_rankings,
         "all_scores": {
-            CLASS_NAMES[i]: float(probabilities[0, i].detach().item())
-            for i in range(len(CLASS_NAMES))
+            model_name: {
+                CLASS_NAMES[i]: float(model_probabilities[i].detach().item())
+                for i in range(len(CLASS_NAMES))
+            }
+            for model_name, model_probabilities in all_model_probabilities.items()
         },
-        "gradcam": _make_overlay(image, heatmap),
+        "gradcam_resnet": _make_gradcam(activation, cnn_gradients, image),
+        "gradcam_hybrid": _make_gradcam(activation, hybrid_gradients, image),
     }

@@ -224,46 +224,67 @@ else:
     if saved and saved.get("image_key") == image_key:
         result = saved["result"]
         st.markdown("---")
-        step_heading("03", "Kết quả phân tích")
-        first, second = result["ranked_classes"]
-        first_col, second_col = st.columns(2, gap="medium")
-        with first_col:
-            st.markdown(
-                f"<div class='class-card'><div class='section-eyebrow'>Xếp hạng 1 · cao nhất</div>"
-                f"<div style='margin-top:.65rem'><span class='class-code'>{first['class_code'].upper()}</span></div>"
-                f"<div class='class-name'>{first['class_name']}</div>"
-                f"<div class='score-line'><span>Điểm softmax</span><strong>{first['score'] * 100:.2f}%</strong></div></div>",
-                unsafe_allow_html=True,
-            )
-        with second_col:
-            st.markdown(
-                f"<div class='class-card alt'><div class='section-eyebrow'>Xếp hạng 2 · gợi ý thay thế</div>"
-                f"<div style='margin-top:.65rem'><span class='class-code'>{second['class_code'].upper()}</span></div>"
-                f"<div class='class-name'>{second['class_name']}</div>"
-                f"<div class='score-line'><span>Điểm softmax</span><strong>{second['score'] * 100:.2f}%</strong></div></div>",
-                unsafe_allow_html=True,
-            )
+        step_heading("03", "So sánh cách ba mô hình phân tích")
+        model_info = [
+            ("ResNet50", "CNN · nhận dạng đặc trưng cục bộ như màu sắc, đường viền và kết cấu", ""),
+            ("ViT-B/16", "Transformer · xem quan hệ giữa các mảng ảnh trên phạm vi toàn ảnh", "alt"),
+            ("Hybrid", "Kết hợp vector đặc trưng ResNet50 và ViT-B/16 để đưa ra dự đoán cuối", ""),
+        ]
+        model_columns = st.columns(3, gap="medium")
+        for column, (model_name, description, style) in zip(model_columns, model_info):
+            ranked = result["model_rankings"][model_name]
+            best, runner_up = ranked[0], ranked[1]
+            with column:
+                st.markdown(
+                    f"<div class='class-card {style}'><div class='section-eyebrow'>{model_name}</div>"
+                    f"<div class='class-name'>{best['class_code'].upper()} · {best['class_name']}</div>"
+                    f"<div class='score-line'><span>Điểm lớp đứng đầu</span><strong>{best['score'] * 100:.1f}%</strong></div>"
+                    f"<div class='surface-copy' style='margin-top:.8rem'>{description}</div>"
+                    f"<div class='surface-copy' style='margin-top:.65rem'>Hạng 2: {runner_up['class_code'].upper()} · {runner_up['score'] * 100:.1f}%</div></div>",
+                    unsafe_allow_html=True,
+                )
 
+        winners = [result["model_rankings"][name][0]["class_code"] for name, _, _ in model_info]
+        if len(set(winners)) == 1:
+            st.success(f"Cả ba mô hình cùng xếp {winners[0].upper()} ở vị trí đầu.")
+        else:
+            st.info("Các mô hình chưa đồng thuận lớp đứng đầu. Hãy xem điểm từng lớp và Grad-CAM để so sánh; bất đồng không tự xác định mô hình nào đúng.")
         st.info(
-            "HAM10000 dùng một nhãn cho mỗi ảnh: lớp thứ hai là phương án mô hình xếp hạng tiếp theo, "
+            "Mỗi ảnh HAM10000 chỉ có một nhãn. Các lớp hạng 2 là phương án dự đoán khác, "
             "không xác nhận có bệnh thứ hai cùng xuất hiện."
         )
         st.warning("Điểm softmax chưa được hiệu chỉnh; không xem đây là xác suất chẩn đoán chính xác.")
 
-        cam_tab, scores_tab = st.tabs(["Vùng ảnh mô hình chú ý", "Điểm của 7 lớp"])
-        with cam_tab:
-            original_tab, overlay_tab = st.tabs(["Ảnh gốc", "Grad-CAM"])
+        resnet_tab, hybrid_tab, scores_tab = st.tabs(["Giải thích ResNet50", "Giải thích Hybrid", "So sánh điểm 7 lớp"])
+        with resnet_tab:
+            original_tab, cam_tab = st.tabs(["Ảnh gốc", "Grad-CAM ResNet50"])
             with original_tab:
                 st.image(image, use_container_width=True)
-            with overlay_tab:
-                st.image(result["gradcam"], use_container_width=True)
-                st.caption("Grad-CAM từ nhánh ResNet50; vùng tô màu không phải mặt nạ phân đoạn y khoa.")
+            with cam_tab:
+                st.image(result["gradcam_resnet"], use_container_width=True)
+                st.caption("Grad-CAM cho lớp ResNet50 xếp đầu; vùng tô màu minh họa ảnh hưởng, không phải vùng bệnh được phân đoạn.")
+            st.markdown("**Cách đọc:** ResNet50 xử lý ảnh bằng các lớp tích chập, thường nhạy với hoa văn và đặc trưng cục bộ. Bản đồ Grad-CAM cho thấy khu vực ảnh hưởng đến điểm của lớp đứng đầu.")
+        with hybrid_tab:
+            original_hybrid, cam_hybrid = st.tabs(["Ảnh gốc", "Grad-CAM Hybrid"])
+            with original_hybrid:
+                st.image(image, use_container_width=True)
+            with cam_hybrid:
+                st.image(result["gradcam_hybrid"], use_container_width=True)
+                st.caption("Đây là gradient của đầu phân loại Hybrid theo đặc trưng ResNet50; ViT không có bản đồ chú ý riêng trong demo này.")
+            st.markdown("**Cách đọc:** Hybrid nối vector ResNet50 (2048 chiều) và ViT (768 chiều), rồi phân loại trên vector kết hợp 2816 chiều. Grad-CAM ở đây chỉ minh họa ảnh hưởng qua nhánh ResNet50.")
         with scores_tab:
             score_frame = pd.DataFrame([
-                {"Mã lớp": code.upper(), "Tên lớp": CLASS_FULL_NAMES[code], "Điểm softmax (%)": round(score * 100, 2)}
-                for code, score in result["all_scores"].items()
-            ]).sort_values("Điểm softmax (%)", ascending=False)
-            st.bar_chart(score_frame.set_index("Mã lớp")["Điểm softmax (%)"], horizontal=True)
+                {
+                    "Mã lớp": code.upper(),
+                    "Tên lớp": CLASS_FULL_NAMES[code],
+                    "ResNet50 (%)": round(result["all_scores"]["ResNet50"][code] * 100, 2),
+                    "ViT-B/16 (%)": round(result["all_scores"]["ViT-B/16"][code] * 100, 2),
+                    "Hybrid (%)": round(result["all_scores"]["Hybrid"][code] * 100, 2),
+                }
+                for code in CLASS_FULL_NAMES
+            ])
+            chart_data = score_frame.set_index("Mã lớp")[["ResNet50 (%)", "ViT-B/16 (%)", "Hybrid (%)"]]
+            st.bar_chart(chart_data, horizontal=True)
             with st.expander("Xem bảng điểm đầy đủ"):
                 st.dataframe(score_frame, hide_index=True, use_container_width=True)
 
