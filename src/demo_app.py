@@ -102,7 +102,8 @@ st.markdown(
 
 
 @st.cache_resource(show_spinner=False)
-def get_models():
+def get_models(bundle_version):
+    # Changing this token invalidates Streamlit's cached bundle when model outputs change.
     return load_models()
 
 
@@ -214,7 +215,11 @@ else:
     if analyze_clicked:
         try:
             with st.spinner("Đang tải mô hình và phân tích ảnh…"):
-                model_bundle = get_models()
+                model_bundle = get_models("resnet-vit-hybrid-v2")
+                if len(model_bundle) != 6:
+                    raise RuntimeError(
+                        "Bộ model cache không đúng phiên bản. Hãy khởi động lại ứng dụng để nạp lại model."
+                    )
                 result = predict_image(image, *model_bundle)
             st.session_state["analysis"] = {"image_key": image_key, "result": result}
         except Exception as exc:
