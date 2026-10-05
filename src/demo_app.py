@@ -1,7 +1,8 @@
-"""Streamlit demo for HAM10000 lesion classification."""
+"""Polished Streamlit interface for the HAM10000 research demo."""
 
 import hashlib
 from io import BytesIO
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -15,50 +16,86 @@ from predict_hybrid import (
 )
 
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+DEMO_DIR = BASE_DIR / "demo_samples"
+
 st.set_page_config(
-    page_title="SkinScope | Phân tích ảnh da",
+    page_title="SkinScope · Dermoscopy AI",
     page_icon="🩺",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 
 st.markdown(
     """
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap');
-    :root { --ink:#13263b; --muted:#617287; --teal:#087e80; --mint:#e9f6f3; --line:#e3ebef; }
-    html, body, [class*="css"] { font-family:'DM Sans',sans-serif; color:var(--ink); }
-    .stApp { background:linear-gradient(180deg,#f5faf9 0%,#f7f9fc 52%,#f4f7fa 100%); }
-    .block-container { max-width:1280px; padding-top:2rem; padding-bottom:3rem; }
-    h1,h2,h3 { font-family:'Manrope',sans-serif; letter-spacing:-.035em; }
-    .hero { padding:2.1rem 2.2rem; border:1px solid #d9eae7; border-radius:24px;
-      background:radial-gradient(circle at 90% 5%,#d8f0e8 0,transparent 32%),linear-gradient(115deg,#fff,#eef8f6 68%,#eff5fb);
-      box-shadow:0 14px 40px rgba(32,71,82,.07); margin-bottom:1.5rem; }
-    .eyebrow { color:var(--teal); font-size:.78rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
-    .hero h1 { margin:.55rem 0 .5rem; font-size:2.25rem; }
-    .hero p { color:var(--muted); max-width:760px; font-size:1.02rem; margin:0; line-height:1.65; }
-    .card { background:white; border:1px solid var(--line); border-radius:20px; padding:1.35rem 1.5rem; box-shadow:0 8px 24px rgba(34,58,79,.045); }
-    .section-label { color:var(--muted); font-size:.78rem; text-transform:uppercase; letter-spacing:.1em; font-weight:700; }
-    .result-name { font-family:'Manrope',sans-serif; font-size:1.45rem; font-weight:800; color:var(--ink); margin:.35rem 0 .15rem; }
-    .result-code { display:inline-block; background:var(--mint); color:var(--teal); border-radius:999px; padding:.25rem .7rem; font-weight:700; font-size:.78rem; }
-    .small-note { color:var(--muted); font-size:.88rem; line-height:1.55; }
-    div[data-testid="stFileUploader"] { background:#fff; border:1px dashed #9fcac1; border-radius:16px; padding:.6rem; }
-    div.stButton > button[kind="primary"] { background:linear-gradient(110deg,#087e80,#149b91); border:0; border-radius:12px; padding:.68rem 1.25rem; font-weight:700; }
+    :root {
+      --ink:#142b3b; --muted:#637b89; --teal:#087e80; --mint:#dff3ed;
+      --line:#deebe8; --paper:#ffffff; --canvas:#f4f8f7; --blue:#eaf1f7;
+    }
+    html, body, [class*="css"] { font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:var(--ink); }
+    .stApp { background:radial-gradient(ellipse at 3% 0%,#e7f5f0 0%,transparent 28%),linear-gradient(180deg,#f8fbfa 0%,#f2f6f8 100%); }
+    .block-container { max-width:1320px; padding:1.4rem 2.4rem 3.2rem; }
+    #MainMenu, footer { visibility:hidden; }
+    header[data-testid="stHeader"] { background:transparent; }
+    h1,h2,h3,h4 { color:var(--ink); letter-spacing:-.035em; }
+    .brandline { display:flex; align-items:center; gap:.65rem; color:var(--teal); font-weight:800; letter-spacing:.11em; font-size:.78rem; text-transform:uppercase; }
+    .brandmark { width:30px; height:30px; display:inline-flex; justify-content:center; align-items:center; border-radius:10px; color:white; font-size:1.1rem; background:linear-gradient(145deg,#0b9690,#087e80); box-shadow:0 5px 12px #087e8033; }
+    .hero { position:relative; overflow:hidden; margin:.8rem 0 1.5rem; padding:2.5rem 2.7rem; border:1px solid #d7e8e4; border-radius:28px; background:radial-gradient(circle at 91% 0%,#cdece2 0,transparent 30%),radial-gradient(circle at 77% 100%,#edf4fb 0,transparent 36%),linear-gradient(112deg,#fff 0%,#f4fbf8 70%,#f1f7fb 100%); box-shadow:0 18px 50px rgba(25,67,73,.075); }
+    .hero-kicker { color:var(--teal); font-size:.77rem; letter-spacing:.13em; font-weight:800; text-transform:uppercase; }
+    .hero h1 { font-size:clamp(2rem,4vw,3.15rem); margin:.48rem 0 .65rem; font-weight:800; line-height:1.08; }
+    .hero p { color:var(--muted); max-width:760px; margin:0; line-height:1.72; font-size:1.03rem; }
+    .pill-row { display:flex; gap:.55rem; flex-wrap:wrap; margin-top:1.25rem; }
+    .pill { padding:.42rem .72rem; border:1px solid #d9e8e4; border-radius:999px; background:#ffffffb8; color:#34515f; font-size:.78rem; font-weight:650; }
+    .step-head { display:flex; align-items:center; gap:.75rem; margin:.35rem 0 .85rem; }
+    .step-num { width:30px; height:30px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center; background:var(--mint); color:var(--teal); font-size:.84rem; font-weight:800; }
+    .step-title { font-size:1.08rem; font-weight:780; letter-spacing:-.02em; color:var(--ink); }
+    .surface { height:100%; background:var(--paper); border:1px solid var(--line); border-radius:22px; padding:1.2rem 1.35rem; box-shadow:0 10px 28px rgba(26,61,77,.045); }
+    .surface-title { margin:0 0 .28rem; color:var(--ink); font-weight:760; font-size:1rem; }
+    .surface-copy { margin:0; color:var(--muted); font-size:.87rem; line-height:1.6; }
+    .section-eyebrow { color:var(--muted); text-transform:uppercase; letter-spacing:.1em; font-size:.72rem; font-weight:800; }
+    .class-card { background:linear-gradient(145deg,#fff,#f5fbf9); border:1px solid var(--line); border-radius:20px; padding:1.25rem 1.35rem; min-height:150px; box-shadow:0 9px 24px rgba(26,61,77,.045); }
+    .class-card.alt { background:linear-gradient(145deg,#fff,#f4f7fb); }
+    .class-code { display:inline-flex; border-radius:999px; padding:.3rem .68rem; background:var(--mint); color:var(--teal); font-size:.74rem; font-weight:850; letter-spacing:.06em; }
+    .alt .class-code { color:#44688b; background:var(--blue); }
+    .class-name { margin:.75rem 0 .7rem; min-height:2.9rem; font-size:1.17rem; line-height:1.28; font-weight:800; letter-spacing:-.025em; }
+    .score-line { display:flex; justify-content:space-between; gap:1rem; align-items:baseline; color:var(--muted); font-size:.82rem; }
+    .score-line strong { color:var(--ink); font-size:1.2rem; }
+    .note { padding:.85rem 1rem; border-radius:14px; background:#f0f7f6; color:#496572; font-size:.83rem; line-height:1.55; border:1px solid #e0eeeb; }
+    .stButton > button[kind="primary"] { min-height:3rem; border:0; border-radius:13px; color:#fff; font-weight:750; background:linear-gradient(105deg,#087e80,#10a092); box-shadow:0 8px 18px #087e8033; transition:transform .15s ease,box-shadow .15s ease; }
+    .stButton > button[kind="primary"]:hover { transform:translateY(-1px); box-shadow:0 11px 23px #087e8040; }
+    div[data-testid="stFileUploader"] { padding:.55rem; border:1px dashed #a8cfc6; border-radius:16px; background:#fbfefd; }
+    div[data-testid="stFileUploader"] section { border:0; }
+    div[data-testid="stMetric"] { border:1px solid var(--line); border-radius:15px; background:#fff; padding:1rem 1.1rem; box-shadow:0 5px 16px #183b4d0a; }
+    div[data-testid="stAlert"] { border-radius:14px; }
+    div[data-testid="stTabs"] button { font-weight:700; }
     section[data-testid="stSidebar"] { background:#f1f7f6; border-right:1px solid var(--line); }
-    div[data-testid="stMetric"] { background:#f5faf9; border:1px solid var(--line); padding:1rem; border-radius:14px; }
+    .footer-note { margin-top:2.5rem; padding-top:1rem; border-top:1px solid var(--line); color:var(--muted); font-size:.8rem; line-height:1.6; }
+    @media (max-width:760px) {
+      .block-container { padding:.8rem 1rem 2.2rem; }
+      .hero { padding:1.55rem 1.35rem; border-radius:21px; }
+      .hero p { font-size:.94rem; }
+      .surface { padding:1rem; }
+      .class-card { min-height:0; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 st.markdown(
+    "<div class='brandline'><span class='brandmark'>◈</span> SkinScope <span style='color:#91a6ab;font-weight:600;letter-spacing:.02em'>/ HAM10000</span></div>",
+    unsafe_allow_html=True,
+)
+st.markdown(
     """
-    <div class="hero">
-      <div class="eyebrow">Hệ thống hỗ trợ nghiên cứu · HAM10000</div>
-      <h1>Phân tích tổn thương da</h1>
-      <p>Tải ảnh dermoscopy để xem các lớp mô hình xếp hạng và vùng ảnh có ảnh hưởng
-      đến dự đoán. Hệ thống kiểm tra ảnh trước, không tự ý cắt hoặc chỉnh sửa ảnh.</p>
-    </div>
+    <section class="hero">
+      <div class="hero-kicker">Dermoscopy research workspace</div>
+      <h1>Hiểu rõ hơn điều mô hình nhìn thấy.</h1>
+      <p>Tải ảnh tổn thương da, kiểm tra chất lượng đầu vào và xem các lớp được xếp hạng
+      cùng bản đồ Grad-CAM. Ảnh gốc luôn được giữ nguyên trong quá trình kiểm tra.</p>
+      <div class="pill-row"><span class="pill">ResNet50</span><span class="pill">Vision Transformer</span><span class="pill">7 lớp HAM10000</span><span class="pill">Grad-CAM</span></div>
+    </section>
     """,
     unsafe_allow_html=True,
 )
@@ -69,136 +106,180 @@ def get_models():
     return load_models()
 
 
-try:
-    with st.spinner("Đang tải các mô hình…"):
-        cnn, vit, hybrid, device = get_models()
-except Exception as exc:
-    st.error(f"Không tải được mô hình: {exc}")
-    st.info("Kiểm tra các checkpoint trong thư mục outputs rồi tải lại trang.")
-    st.stop()
-
 with st.sidebar:
-    st.markdown("### SkinScope")
-    st.caption("Bản demo phân loại ảnh dermoscopy")
+    st.markdown("## ◈ SkinScope")
+    st.caption("Bản demo hỗ trợ nghiên cứu ảnh dermoscopy")
     st.markdown("---")
-    st.markdown("**Kiến trúc**")
+    st.markdown("**Mô hình**")
     st.write("ResNet50 + ViT-B/16")
-    st.write("Ghép đặc trưng: 2.816 chiều")
-    st.write("Bộ phân loại: Weighted Cross Entropy")
+    st.write("Ghép đặc trưng 2.816 chiều")
+    st.write("Weighted Cross Entropy")
     st.markdown("---")
-    st.markdown("**Thiết bị**")
-    st.write(str(device))
-    st.caption("Grad-CAM được tạo từ nhánh ResNet50.")
+    st.markdown("**Giải thích kết quả**")
+    st.caption("Grad-CAM minh họa vùng ảnh ảnh hưởng đến điểm dự đoán; không phải phân đoạn tổn thương.")
+    st.caption("Điểm softmax chưa được hiệu chỉnh thành xác suất lâm sàng.")
 
-st.markdown("### 1 · Chọn ảnh")
-uploaded_file = st.file_uploader(
-    "Tải ảnh dermoscopy lên",
-    type=["jpg", "jpeg", "png"],
-    help="Ảnh được giữ nguyên; hệ thống chỉ đổi kích thước để đưa vào mô hình.",
-)
 
-if uploaded_file is None:
+def step_heading(number, title):
     st.markdown(
-        "<div class='card'><span class='section-label'>Bắt đầu</span><p class='small-note'>"
-        "Chọn ảnh JPG hoặc PNG. Ảnh mẫu có thể lấy trong thư mục demo_samples của project.</p></div>",
+        f"<div class='step-head'><span class='step-num'>{number}</span><span class='step-title'>{title}</span></div>",
         unsafe_allow_html=True,
     )
+
+
+step_heading("01", "Chọn ảnh dermoscopy")
+source = st.radio(
+    "Nguồn ảnh",
+    ["Tải ảnh lên", "Thử ảnh mẫu"],
+    horizontal=True,
+    label_visibility="collapsed",
+)
+
+image = None
+raw_bytes = None
+display_name = None
+reference_label = None
+
+if source == "Tải ảnh lên":
+    uploaded_file = st.file_uploader(
+        "Kéo ảnh vào đây hoặc chọn từ thiết bị",
+        type=["jpg", "jpeg", "png"],
+        help="JPG hoặc PNG. Ảnh sẽ không bị tự động cắt.",
+    )
+    if uploaded_file is not None:
+        raw_bytes = uploaded_file.getvalue()
+        display_name = uploaded_file.name
 else:
-    raw_bytes = uploaded_file.getvalue()
+    sample_files = sorted(path.name for path in DEMO_DIR.glob("*.jpg")) if DEMO_DIR.exists() else []
+    if sample_files:
+        selected_sample = st.selectbox(
+            "Chọn ảnh mẫu",
+            sample_files,
+            format_func=lambda name: Path(name).stem.replace("_", " · "),
+        )
+        raw_bytes = (DEMO_DIR / selected_sample).read_bytes()
+        display_name = selected_sample
+        reference_label = Path(selected_sample).stem.split("_")[0].upper()
+    else:
+        st.info("Không tìm thấy ảnh trong demo_samples.")
+
+if raw_bytes is not None:
     image_key = hashlib.sha256(raw_bytes).hexdigest()
     try:
         image = Image.open(BytesIO(raw_bytes)).convert("RGB")
     except (UnidentifiedImageError, OSError):
-        st.error("Tệp tải lên không đọc được như ảnh. Hãy chọn JPG hoặc PNG hợp lệ.")
-        st.stop()
+        st.error("Không đọc được tệp này như ảnh JPG hoặc PNG hợp lệ.")
 
+if image is None:
+    st.markdown(
+        "<div class='surface'><p class='surface-title'>Bắt đầu nhanh</p><p class='surface-copy'>"
+        "Tải ảnh của bạn lên hoặc chọn một trong các ảnh mẫu HAM10000 để xem giao diện phân tích.</p></div>",
+        unsafe_allow_html=True,
+    )
+else:
     quality = inspect_image(image)
-    left, right = st.columns([1.03, 0.97], gap="large")
-    with left:
-        st.markdown("### 2 · Kiểm tra ảnh")
-        st.image(image, caption="Ảnh gốc — chưa bị cắt", use_container_width=True)
-        st.caption(f"Kích thước: {quality['width']} × {quality['height']} px")
+    preview_col, quality_col = st.columns([1.12, 0.88], gap="large")
+    with preview_col:
+        st.markdown("<div class='section-eyebrow'>Ảnh xem trước</div>", unsafe_allow_html=True)
+        st.image(image, caption=display_name, use_container_width=True)
+    with quality_col:
+        st.markdown("<div class='section-eyebrow'>Kiểm tra đầu vào</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='surface'><p class='surface-title'>{quality['width']} × {quality['height']} px</p>"
+            "<p class='surface-copy'>Ảnh được chuyển về kích thước mô hình khi dự đoán; tệp gốc không bị cắt.</p></div>",
+            unsafe_allow_html=True,
+        )
+        if reference_label:
+            st.caption(f"Nhãn tham chiếu của ảnh mẫu: {reference_label}")
         if quality["has_warnings"]:
             for issue in quality["issues"]:
                 st.warning(issue)
             for suggestion in quality["suggestions"]:
                 st.caption("Gợi ý: " + suggestion)
-            st.caption("Kiểm tra tự động chỉ là heuristic; vùng tối có thể là đặc điểm thật của ảnh.")
+            st.caption("Kiểm tra viền là heuristic; vùng tối cũng có thể thuộc tổn thương thật.")
         else:
-            st.success("Không phát hiện viền đen hoặc vùng trống rõ rệt theo kiểm tra tự động.")
+            st.success("Không phát hiện viền đen hoặc vùng đồng màu đáng kể.")
 
-    with right:
-        st.markdown("### 3 · Phân tích")
-        st.markdown(
-            "<div class='card'><span class='section-label'>Trước khi tiếp tục</span>"
-            "<p class='small-note'>Xem ảnh gốc và cảnh báo chất lượng. Nếu ảnh phù hợp, bấm nút để chạy mô hình.</p></div>",
-            unsafe_allow_html=True,
-        )
-        if st.button("Phân tích ảnh", type="primary", use_container_width=True):
-            try:
-                with st.spinner("Đang phân tích và tạo bản đồ Grad-CAM…"):
-                    result = predict_image(image, cnn, vit, hybrid, device)
-                st.session_state["analysis"] = {"image_key": image_key, "result": result}
-            except Exception as exc:
-                st.error(f"Phân tích không thành công: {exc}")
+    step_heading("02", "Chạy phân tích")
+    st.markdown(
+        "<div class='note'>Mô hình xếp hạng 7 lớp trong HAM10000. Hãy xem ảnh và cảnh báo chất lượng trước khi chạy.</div>",
+        unsafe_allow_html=True,
+    )
+    button_col, hint_col = st.columns([.42, .58], vertical_alignment="center")
+    with button_col:
+        analyze_clicked = st.button("✦  Phân tích ảnh", type="primary", use_container_width=True)
+    with hint_col:
+        st.caption("Lần phân tích đầu có thể mất thêm thời gian để tải các checkpoint.")
+
+    if analyze_clicked:
+        try:
+            with st.spinner("Đang tải mô hình và phân tích ảnh…"):
+                model_bundle = get_models()
+                result = predict_image(image, *model_bundle)
+            st.session_state["analysis"] = {"image_key": image_key, "result": result}
+        except Exception as exc:
+            st.error(f"Phân tích chưa hoàn tất: {exc}")
 
     saved = st.session_state.get("analysis")
     if saved and saved.get("image_key") == image_key:
         result = saved["result"]
         st.markdown("---")
-        st.markdown("### Kết quả mô hình")
-        result_col, cam_col = st.columns([0.9, 1.1], gap="large")
-
-        with result_col:
-            first, second = result["ranked_classes"]
+        step_heading("03", "Kết quả phân tích")
+        first, second = result["ranked_classes"]
+        first_col, second_col = st.columns(2, gap="medium")
+        with first_col:
             st.markdown(
-                f"<div class='card'><span class='section-label'>Xếp hạng 1</span>"
-                f"<div style='margin:.55rem 0'><span class='result-code'>{first['class_code'].upper()}</span></div>"
-                f"<div class='result-name'>{first['class_name']}</div></div>",
+                f"<div class='class-card'><div class='section-eyebrow'>Xếp hạng 1 · cao nhất</div>"
+                f"<div style='margin-top:.65rem'><span class='class-code'>{first['class_code'].upper()}</span></div>"
+                f"<div class='class-name'>{first['class_name']}</div>"
+                f"<div class='score-line'><span>Điểm softmax</span><strong>{first['score'] * 100:.2f}%</strong></div></div>",
                 unsafe_allow_html=True,
             )
-            st.metric("Điểm softmax của lớp đứng đầu", f"{first['score'] * 100:.2f}%")
-            st.markdown("#### Lớp gợi ý thứ hai")
-            st.write(f"**{second['class_code'].upper()} · {second['class_name']}**")
-            st.progress(float(second["score"]))
-            st.caption(f"Điểm softmax: {second['score'] * 100:.2f}%")
-            st.info(
-                "Đây là hai lớp được xếp hạng cao nhất trong phân loại một nhãn. "
-                "Lớp thứ hai là khả năng thay thế, không xác nhận bệnh thứ hai cùng xuất hiện."
-            )
-            st.warning(
-                "Điểm softmax chưa được hiệu chỉnh xác suất; không diễn giải phần trăm này "
-                "như xác suất chẩn đoán chính xác."
+        with second_col:
+            st.markdown(
+                f"<div class='class-card alt'><div class='section-eyebrow'>Xếp hạng 2 · gợi ý thay thế</div>"
+                f"<div style='margin-top:.65rem'><span class='class-code'>{second['class_code'].upper()}</span></div>"
+                f"<div class='class-name'>{second['class_name']}</div>"
+                f"<div class='score-line'><span>Điểm softmax</span><strong>{second['score'] * 100:.2f}%</strong></div></div>",
+                unsafe_allow_html=True,
             )
 
-        with cam_col:
-            st.markdown("#### Vùng ảnh ảnh hưởng đến dự đoán")
-            st.image(result["gradcam"], caption="Grad-CAM · nhánh ResNet50", use_container_width=True)
-            st.caption(
-                "Vùng tô màu cho biết khu vực có ảnh hưởng đến điểm của lớp dự đoán. "
-                "Đây không phải phân đoạn hay đường viền y khoa của tổn thương."
-            )
+        st.info(
+            "HAM10000 dùng một nhãn cho mỗi ảnh: lớp thứ hai là phương án mô hình xếp hạng tiếp theo, "
+            "không xác nhận có bệnh thứ hai cùng xuất hiện."
+        )
+        st.warning("Điểm softmax chưa được hiệu chỉnh; không xem đây là xác suất chẩn đoán chính xác.")
 
-        st.markdown("#### Điểm của cả 7 lớp")
-        scores = pd.DataFrame([
-            {
-                "Mã lớp": code.upper(),
-                "Tên lớp": CLASS_FULL_NAMES[code],
-                "Điểm softmax (%)": round(score * 100, 2),
-            }
-            for code, score in result["all_scores"].items()
-        ]).sort_values("Điểm softmax (%)", ascending=False)
-        st.dataframe(scores, hide_index=True, use_container_width=True)
+        cam_tab, scores_tab = st.tabs(["Vùng ảnh mô hình chú ý", "Điểm của 7 lớp"])
+        with cam_tab:
+            original_tab, overlay_tab = st.tabs(["Ảnh gốc", "Grad-CAM"])
+            with original_tab:
+                st.image(image, use_container_width=True)
+            with overlay_tab:
+                st.image(result["gradcam"], use_container_width=True)
+                st.caption("Grad-CAM từ nhánh ResNet50; vùng tô màu không phải mặt nạ phân đoạn y khoa.")
+        with scores_tab:
+            score_frame = pd.DataFrame([
+                {"Mã lớp": code.upper(), "Tên lớp": CLASS_FULL_NAMES[code], "Điểm softmax (%)": round(score * 100, 2)}
+                for code, score in result["all_scores"].items()
+            ]).sort_values("Điểm softmax (%)", ascending=False)
+            st.bar_chart(score_frame.set_index("Mã lớp")["Điểm softmax (%)"], horizontal=True)
+            with st.expander("Xem bảng điểm đầy đủ"):
+                st.dataframe(score_frame, hide_index=True, use_container_width=True)
 
-st.markdown("---")
-with st.expander("Các lớp trong HAM10000"):
-    class_table = pd.DataFrame([
-        {"Mã lớp": code.upper(), "Tên lớp": name}
-        for code, name in CLASS_FULL_NAMES.items()
-    ])
-    st.dataframe(class_table, hide_index=True, use_container_width=True)
+with st.expander("Tìm hiểu mô hình và 7 lớp"):
+    st.markdown(
+        "Mô hình ghép đặc trưng của ResNet50 và ViT-B/16 rồi xếp hạng bảy nhóm tổn thương của HAM10000. "
+        "Điểm hiển thị là softmax thô, chưa được hiệu chỉnh xác suất."
+    )
+    st.dataframe(
+        pd.DataFrame([{"Mã lớp": code.upper(), "Tên lớp": name} for code, name in CLASS_FULL_NAMES.items()]),
+        hide_index=True,
+        use_container_width=True,
+    )
 
-st.caption(
-    "Công cụ minh họa phục vụ nghiên cứu. Kết quả không thay thế đánh giá của bác sĩ "
-    "và không dùng làm chẩn đoán y khoa."
+st.markdown(
+    "<div class='footer-note'><b>Lưu ý:</b> SkinScope là bản minh họa nghiên cứu, không phải thiết bị y tế. "
+    "Kết quả không thay thế đánh giá của bác sĩ và không dùng để tự chẩn đoán hoặc điều trị.</div>",
+    unsafe_allow_html=True,
 )
